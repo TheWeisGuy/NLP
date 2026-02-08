@@ -9,7 +9,17 @@ from typing import List
 from sentiment_data import *
 from utils import *
 from collections import Counter
+import math
+from collections import defaultdict
 
+
+def sigmoid(x: float) -> float:
+    """
+    Compute the sigmoid function: 1 / (1 + e^-x)
+    :param x: input value
+    :return: sigmoid output between 0 and 1
+    """
+    return 1 / (1 + math.exp(-x))
 
 class SentimentClassifier(object):
     """
@@ -72,7 +82,15 @@ class UnigramFeatureExtractor(FeatureExtractor):
     """
 
     def __init__(self, indexer: Indexer):
-        raise Exception("Must be implemented")
+        return
+    
+    def extract_features(self, sentence, add_to_indexer = False):
+        features = Counter()
+        for word in sentence:
+            word = word.lower()
+            word = word.strip('.,!?')
+            features[word] = 1
+        return features
 
 
 class BigramFeatureExtractor(FeatureExtractor):
@@ -81,9 +99,24 @@ class BigramFeatureExtractor(FeatureExtractor):
     """
 
     def __init__(self, indexer: Indexer):
-        raise Exception("Must be implemented")
+            return
+    
+    def extract_features(self, sentence, add_to_indexer=False):
+        features = Counter()
 
+        cleaned = []
+        for word in sentence:
+            word = word.lower().strip('.,!?')
+            if word:
+                cleaned.append(word)
+                features[word] = 1 
 
+        for i in range(len(cleaned) - 1):
+            bigram = cleaned[i] + "_" + cleaned[i + 1]
+            features[bigram] = 1
+
+        return features
+    
 class BetterFeatureExtractor(FeatureExtractor):
     """
     Better feature extractor...try whatever you can think of!
@@ -99,18 +132,42 @@ class LogisticRegressionClassifier(SentimentClassifier):
     superclass. Hint: you'll probably need this class to wrap both the weight vector and featurizer -- feel free to
     modify the constructor to pass these in.
     """
-    def __init__(self):
-        raise Exception("Must be implemented")
+    def __init__(self,weights,feat_extractor):
+        self.weights = weights
+        self.feat_extractor = feat_extractor
+    
+    def predict(self, sentence):
+        features = self.feat_extractor.extract_features(sentence, add_to_indexer=False)
 
+        score = 0.0
+        for f, count in features.items():
+            if f in self.weights:
+                score += self.weights[f] * count
 
-def train_logistic_regression(train_exs: List[SentimentExample], feat_extractor: FeatureExtractor) -> LogisticRegressionClassifier:
+        prob = sigmoid(score)
+        return 1 if prob >= 0.5 else 0
+
+def train_logistic_regression(train_exs: List[SentimentExample], feat_extractor: FeatureExtractor, num_epochs = 100, lr=.001) -> LogisticRegressionClassifier:
     """
     Train a logistic regression model.
     :param train_exs: training set, List of SentimentExample objects
     :param feat_extractor: feature extractor to use
     :return: trained LogisticRegressionClassifier model
     """
-    raise Exception("Must be implemented")
+    weights = defaultdict(float)
+    for iteration in range(num_epochs):
+        for ex in train_exs:
+            features = feat_extractor.extract_features(ex.words, add_to_indexer=True)
+            # compute score
+            score = sum(weights[f] * count for f, count in features.items())
+            prob = sigmoid(score)
+            # update weights
+            error = ex.label - prob
+            for f, count in features.items():
+                weights[f] += lr * error * count
+    classifier = LogisticRegressionClassifier(weights,feat_extractor)
+    return classifier
+
 
 
 def train_linear_model(args, train_exs: List[SentimentExample], dev_exs: List[SentimentExample]) -> SentimentClassifier:
@@ -138,7 +195,7 @@ def train_linear_model(args, train_exs: List[SentimentExample], dev_exs: List[Se
         raise Exception("Pass in UNIGRAM, BIGRAM, or BETTER to run the appropriate system")
 
     # Train the model
-    model = train_logistic_regression(train_exs, feat_extractor)
+    model = train_logistic_regression(train_exs, feat_extractor,args.num_epochs,args.lr)
     return model
 
 
